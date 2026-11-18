@@ -50,7 +50,7 @@ jobs:
           php -l artisan
       - name: Laravel tests and route registration
         run: |
-          php artisan test
+          ./vendor/bin/phpunit
           php artisan route:list
       - name: Original browser unit tests and JavaScript syntax
         run: |

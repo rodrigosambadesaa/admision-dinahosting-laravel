@@ -70,7 +70,7 @@ prohíbe en el resto.
 ## Pruebas y CI
 
 ~~~bash
-php artisan test
+./vendor/bin/phpunit
 node --test tests/javascript.test.cjs
 python tests/differential.py
 ~~~
