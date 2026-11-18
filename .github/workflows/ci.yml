@@ -1,0 +1,170 @@
+name: Laravel parity, security and runtime CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: laravel-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  php:
+    name: Laravel tests / PHP ${{ matrix.php }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.3', '8.4', '8.5']
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'true'
+      APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          extensions: mbstring, dom, xml, xmlwriter
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Required PDF PHP-folder entry executes native Laravel Artisan
+        run: |
+          php PHP/fibonacci.php 'ts:0' 'ts:21' > /tmp/laravel-folder-cli.json
+          php -r '
+            $data = json_decode(file_get_contents("/tmp/laravel-folder-cli.json"), true, 512, JSON_THROW_ON_ERROR);
+            if (array_keys($data) !== ["current_month", "current_year", "custom_range"]) exit(1);
+            if ($data["custom_range"]["fibonacci_timestamps"] !==
+              ["0", "1", "1", "2", "3", "5", "8", "13", "21"]) exit(2);
+          '
+      - name: Validate Composer metadata
+        run: composer validate --no-check-publish
+      - name: Lint all application and PHPUnit PHP files
+        run: |
+          find app bootstrap config routes public tests benchmarks -name '*.php' -print0 |
+            xargs -0 -n1 php -l
+          php -l artisan
+      - name: Laravel tests and route registration
+        run: |
+          ./vendor/bin/phpunit
+          php artisan route:list
+      - name: Original browser unit tests and JavaScript syntax
+        run: |
+          node --check public/assets/javascript/fibonacci.js
+          node --test tests/javascript.test.cjs
+
+  differential:
+    name: PHP, browser JS, Django and Laravel exact equivalence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      APP_ENV: testing
+      APP_DEBUG: 'false'
+      APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+      DJANGO_DEBUG: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: laravel
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: rodrigosambadesaa/admision-dinahosting
+          ref: dac3225ebca6632b475ea0cd7ab6edc2e4018027
+          path: original
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: rodrigosambadesaa/admision-dinahosting-django
+          ref: 5526402f27a174145b0bc60f64290c0c6105be26
+          path: django
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Install frameworks
+        run: |
+          composer install --working-dir=laravel --no-interaction --prefer-dist --no-progress
+          python -m pip install -r django/requirements.txt
+      - name: Assert ported browser artifacts remain exact copies of originals
+        run: |
+          cmp original/JAVASCRIPT/fibonacci.js laravel/public/assets/javascript/fibonacci.js
+          cmp original/JAVASCRIPT/styles.css laravel/public/assets/javascript/styles.css
+          cmp original/CSS/style.css laravel/public/assets/login/style.css
+          cmp original/CSS/style.scss laravel/public/assets/login/style.scss
+          node --test laravel/tests/javascript.test.cjs
+      - name: Compare full JSON and sequences on edge and 256-digit inputs
+        run: |
+          REFERENCE_ORIGINAL="$GITHUB_WORKSPACE/original" REFERENCE_DJANGO="$GITHUB_WORKSPACE/django" \
+            python laravel/tests/differential.py
+
+  docker:
+    name: Patched PHP container and live HTTP smoke
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Validate Compose file
+        run: docker compose config --quiet
+      - name: Build latest patched PHP 8.4 image
+        run: docker compose build --pull web
+      - name: Check actual PHP interpreter version and hardening
+        run: |
+          docker compose run --rm --no-deps web php -r '
+            if (PHP_VERSION_ID < 80427) { fwrite(STDERR, "Unsafe PHP patch level\n"); exit(1); }
+            foreach (["expose_php", "file_uploads",
+              "session.upload_progress.enabled", "display_errors"] as $option) {
+              if (!in_array(strtolower(trim((string) ini_get($option))),
+                ["", "0", "off", "false", "no"], true)) {
+                fwrite(STDERR, "$option not hardened\n"); exit(1);
+              }
+            }
+            echo PHP_VERSION, "\n";
+          '
+      - name: Start Laravel demo container
+        run: docker compose up -d --no-build web
+      - name: Verify routes, HTTP assets, CSP and source isolation
+        run: |
+          set -eu
+          curl --retry 30 --retry-all-errors --retry-delay 1 --max-time 5 -fsS http://127.0.0.1:8087/ | grep -q 'Prueba técnica Dinahosting'
+          curl -fsS 'http://127.0.0.1:8087/fibonacci/?start_date=ts%3A5&end_date=ts%3A13' | grep -q 'Rango personalizado'
+          curl -fsS http://127.0.0.1:8087/php/ | grep -q 'Fibonacci en PHP y Laravel'
+          curl -fsS http://127.0.0.1:8087/login/ | grep -q 'Demostración sin autenticación'
+          curl -fsS http://127.0.0.1:8087/JAVASCRIPT/index.html | grep -q 'fibonacci-form'
+          curl -fsS http://127.0.0.1:8087/assets/javascript/fibonacci.js | grep -q 'class BigInteger'
+          curl -fsS http://127.0.0.1:8087/assets/login/style.css | grep -q 'login-card'
+          curl -sSI http://127.0.0.1:8087/javascript/ | grep -q "script-src 'self'"
+          curl -sSI http://127.0.0.1:8087/login/ | grep -q "script-src 'none'"
+          curl -sSI http://127.0.0.1:8087/login/ | grep -qi '^X-Content-Type-Options: nosniff'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8087/app/Math/BigInteger.php)" = 404
+          test "$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8087/login/)" != 200
+      - name: Dump server logs on failure
+        if: failure()
+        run: docker compose logs web
+      - name: Tear down container
+        if: always()
+        run: docker compose down --remove-orphans

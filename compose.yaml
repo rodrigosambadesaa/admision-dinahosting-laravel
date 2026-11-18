@@ -1,0 +1,30 @@
+services:
+  web:
+    build:
+      context: .
+      pull: true
+    ports:
+      - "${WEB_PORT:-8087}:8000"
+    environment:
+      APP_NAME: "Dinahosting Laravel (local demo)"
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_KEY: "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+      APP_URL: "http://localhost:8000"
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+      LOG_CHANNEL: stderr
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /app/storage/framework/views:rw,noexec,nosuid,size=32m,uid=33,gid=33
+      - /app/storage/framework/sessions:rw,noexec,nosuid,size=16m,uid=33,gid=33
+      - /app/storage/framework/cache:rw,noexec,nosuid,size=16m,uid=33,gid=33
+      - /app/storage/logs:rw,noexec,nosuid,size=16m,uid=33,gid=33
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 128
+    restart: "no"
