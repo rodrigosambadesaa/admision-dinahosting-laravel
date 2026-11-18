@@ -1,0 +1,77 @@
+name: Four-runtime Fibonacci CPU and peak RSS benchmark
+
+on:
+  push:
+    paths:
+      - 'benchmarks/**'
+      - '.github/workflows/fibonacci-benchmark.yml'
+      - 'app/Math/**'
+      - 'app/Service/**'
+      - 'app/Providers/**'
+      - 'app/Console/**'
+  pull_request:
+    paths:
+      - 'benchmarks/**'
+      - '.github/workflows/fibonacci-benchmark.yml'
+      - 'app/Math/**'
+      - 'app/Service/**'
+      - 'app/Providers/**'
+      - 'app/Console/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: PHP vs JS vs Django vs Laravel (one Ubuntu runner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APP_ENV: testing
+      APP_KEY: 'base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: laravel
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: rodrigosambadesaa/admision-dinahosting
+          ref: dac3225ebca6632b475ea0cd7ab6edc2e4018027
+          path: original
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: rodrigosambadesaa/admision-dinahosting-django
+          ref: 5526402f27a174145b0bc60f64290c0c6105be26
+          path: django
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - name: Install Django and Laravel
+        run: |
+          python -m pip install -r django/requirements.txt
+          composer install --working-dir=laravel --prefer-dist --no-interaction --no-progress
+      - name: Cross-runtime isolated and full CLI measurements
+        run: |
+          python laravel/benchmarks/compare.py \
+            --original-dir original --django-dir django --laravel-dir laravel \
+            --output-dir benchmark-results
+          cat benchmark-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Publish raw samples and summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: fibonacci-four-runtime-${{ github.run_id }}
+          path: benchmark-results/
+          retention-days: 30
