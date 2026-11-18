@@ -91,7 +91,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           repository: rodrigosambadesaa/admision-dinahosting-django
-          ref: 5526402f27a174145b0bc60f64290c0c6105be26
+          ref: 4740b05d3b7ab8adb3fceb47a54b94f5dd521e14
           path: django
           persist-credentials: false
       - uses: actions/setup-python@v6
