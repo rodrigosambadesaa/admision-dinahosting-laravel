@@ -127,9 +127,12 @@ jobs:
         run: |
           docker compose run --rm --no-deps web php -r '
             if (PHP_VERSION_ID < 80427) { fwrite(STDERR, "Unsafe PHP patch level\n"); exit(1); }
-            foreach (["expose_php" => "0", "file_uploads" => "0",
-              "session.upload_progress.enabled" => "0", "display_errors" => "0"] as $option => $expected) {
-              if (ini_get($option) !== $expected) { fwrite(STDERR, "$option not hardened\n"); exit(1); }
+            foreach (["expose_php", "file_uploads",
+              "session.upload_progress.enabled", "display_errors"] as $option) {
+              if (!in_array(strtolower(trim((string) ini_get($option))),
+                ["", "0", "off", "false", "no"], true)) {
+                fwrite(STDERR, "$option not hardened\n"); exit(1);
+              }
             }
             echo PHP_VERSION, "\n";
           '
