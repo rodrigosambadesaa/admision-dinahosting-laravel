@@ -36,6 +36,16 @@ jobs:
           php-version: ${{ matrix.php }}
           coverage: none
           extensions: mbstring, dom, xml, xmlwriter
+      - name: Verify PHP runtime security patch level
+        run: |
+          php -r '
+          $minimum = ["8.3" => 80337, "8.4" => 80428, "8.5" => 80513, "8.6" => 80600];
+          $branch = PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;
+          if (!isset($minimum[$branch]) || PHP_VERSION_ID < $minimum[$branch]) {
+              fwrite(STDERR, "Unpatched or unsupported PHP: " . PHP_VERSION . PHP_EOL);
+              exit(1);
+          }
+          '
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
@@ -104,6 +114,16 @@ jobs:
         with:
           php-version: '8.4'
           coverage: none
+      - name: Verify PHP runtime security patch level
+        run: |
+          php -r '
+          $minimum = ["8.3" => 80337, "8.4" => 80428, "8.5" => 80513, "8.6" => 80600];
+          $branch = PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;
+          if (!isset($minimum[$branch]) || PHP_VERSION_ID < $minimum[$branch]) {
+              fwrite(STDERR, "Unpatched or unsupported PHP: " . PHP_VERSION . PHP_EOL);
+              exit(1);
+          }
+          '
       - name: Install frameworks
         run: |
           composer install --working-dir=laravel --no-interaction --prefer-dist --no-progress
@@ -135,7 +155,7 @@ jobs:
       - name: Check actual PHP interpreter version and hardening
         run: |
           docker compose run --rm --no-deps web php -r '
-            if (PHP_VERSION_ID < 80427) { fwrite(STDERR, "Unsafe PHP patch level\n"); exit(1); }
+            if (PHP_VERSION_ID < 80428) { fwrite(STDERR, "Unsafe PHP patch level\n"); exit(1); }
             foreach (["expose_php", "file_uploads",
               "session.upload_progress.enabled", "display_errors"] as $option) {
               if (!in_array(strtolower(trim((string) ini_get($option))),
