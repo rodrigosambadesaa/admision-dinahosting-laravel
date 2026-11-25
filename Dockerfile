@@ -1,5 +1,5 @@
 # Development-only HTTP server. Refresh the base image for security patches.
-FROM php:8.4-cli
+FROM php:8.4.28-cli
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git unzip libonig-dev \
